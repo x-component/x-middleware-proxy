@@ -200,9 +200,6 @@ suite.addBatch({
 		'test_case_1_usage_Slash'    : check('/node/usage', '/node/index.js?v=ct064e90trr4yjymb4kt3t7gpw', 'index.js?v=ct064e90trr4yjymb4kt3t7gpw'),
 		'test_case_2_usage_no_Slash' : check('/node/usage/', '/node/index.js?v=ct064e90trr4yjymb4kt3t7gpw', '../index.js?v=ct064e90trr4yjymb4kt3t7gpw'),
 		
-		'test_case_1_csc-bill_aktuelle-rechnung_empty_before_session'     : check('/csc-bill/aktuelle-rechnung','/csc-bill/;jsessionid=389AD379FFC0C05F942A17284124B764?wicket:interface=:0:1::::'  , ';jsessionid=389AD379FFC0C05F942A17284124B764?wicket:interface=:0:1::::' ),
-		'test_case_2_csc-bill_aktuelle-rechnung_not_empty_before_session' : check('/csc-bill/aktuelle-rechnung','/csc-bill/x;jsessionid=389AD379FFC0C05F942A17284124B764?wicket:interface=:0:1::::' , 'x;jsessionid=389AD379FFC0C05F942A17284124B764?wicket:interface=:0:1::::' ),
-		
 		// recognize external and non external links
 		'testExernalLink'                    : check('/foo/foo2/foo3','http://external:80/foo/foo2/foo3','http://external:80/foo/foo2/foo3'),
 		

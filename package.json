@@ -7,15 +7,18 @@
 		"x-common"               : "1.x.x",
 		"x-callback"             : "1.x.x",
 		"x-cookie"               : "1.x.x",
-		"x-middleware-composite" : "1.x.x"
+		"x-middleware-composite" : "1.x.x",
+		"x-requests"             : "1.x.x"
 	},
 	"devDependencies":{
-		"x-publish": "1.x.x",
-		"x-configs": "1.x.x",
-		"x-dom"    : "1.x.x",
-		"x-log"    : "1.x.x",
-		"x-xui"    : "1.x.x",
-		"vows"     : "latest"
+		"x-publish"        : "1.x.x",
+		"x-configs"        : "1.x.x",
+		"x-dom"            : "1.x.x",
+		"x-log"            : "1.x.x",
+		"x-xui"            : "1.x.x",
+		"vows"             : "latest",
+		"express"          : "latest",
+		"cookie-parser"    : "latest"
 	},
 	"main" : "index.js",
 	"scripts": {

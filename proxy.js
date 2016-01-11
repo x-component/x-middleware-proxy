@@ -1,127 +1,69 @@
-"use strict";
-/**
- * read content from CMS
+'use strict';
+/*
+ * Returns an function which fires a inner request and puts the data (statusCode','headers','body)
+ * from corresponding response to the outer response.
+ *
  */
+
 var
 	callback = require('x-callback'),
 	extend   = require('x-common').extend,
 	merge    = require('x-common').merge,
 	bool     = require('x-common').bool,
+	pluck    = require('x-common').pluck,
+	property = require('x-common').property,
 	proxy    = require('x-proxy');
 
-/*
- * this middleware forwards the request the next server and adds the result to the response if body_property is given p.e. 'body'
- *
- * For now it will read the body completely.
- * Only html and text bodies are handled. Others are returned directly as a complete response.
- *
- * Note: This can be changed into reading chunks and let a future chunk aware middleware handle these chuncks.
- * Note: Chanhing this to forwarding chunks is alo required if streaming large bodies like viedeos
- *
- * perfrom call, place body into body   or data : host : url
- * then middleware can move body into data:   backend: url ...   cms template load
- *
- *
- */
 var M;
-module.exports = extend(M=function(options){
+module.exports = extend (M = function(options){
 	
 	options = merge({}, options, M.options);
 	
+	var
+		proxy_req_property = property(options.request),
+		proxy_res_property = property(options.response);
+	
 	return function (req, res, next) {
-		
+		debugger;
 		var
-			log = req.log ? req.log(__filename) : {},
-			data = res.data = res.data || {},
-			errors = data.errors = data.errors || [],
-			
-			// inform middle ware dowstream about the proxying
-			client       = M.client(options.client,req,errors,log),
-			prx          = client ? proxy(req, client.config, options.mount) : null, // mount optional
-			u            = prx ? prx.url(req.url) : null;
+			log    = req.log ? req.log(__filename) : {},
+			// inform middleware dowstream about the proxying
+			errors = [],
+			client       = M.client(options.client, req, res, errors, log),
+			client_config = typeof(client.config)==='function'? client.config(req.preview) : client.config,
+			prx          = client ? proxy(req, client_config, options.mount) : null, // mount optional
+			u            = prx ? prx.url(req.url, true) : null;
 		
 		if(!client || !u ){
+			log.error && log.error('could not load proxy client', { options:options } );
 			next && next();
 			return;
 		}
 		
-		var call_options = { method: req.method, url:u, preview:req.preview, encoding:null };
-		if( call_options && req.body ) call_options.body=req.body;
+		var proxy_req = proxy_req_property(req);
+		if(!proxy_req) {
+			next && next();
+			return;
+		}
 		
-		client(call_options, callback(log,res,function(err,client_res,body){
+		var call_options = merge({ method : req.method, url : u, preview : req.preview, encoding : null }, proxy_req);
+		
+		client(call_options, callback(log, function(err, client_res, body){
+			req.proxy = extend(prx, req.proxy || {});
 			
-			if(err){return;} // logging , 500 done by callback
+			// keep a property with headers to access them later in the pipeline
+			// p.e. for removal/updating location header etc.
+			var proxy_res = proxy_res_property(res);
 			
-			// forward status code
-			res.statusCode=client_res.statusCode;
+			if(!proxy_res) proxy_res = proxy_res_property(res, {});
 			
-			if ( res.statusCode >= 400 && ( 404 !== res.statusCode || options.client.strict ) ){
-				res.send( res.statusCode );
+			if(err) {  // logging done by callback
+				proxy_res.error = err;
+				next && next();
 				return;
 			}
 			
-			req.proxy=prx;
-			
-			// do not forward any response headers for now
-			var
-				res_headers  = client_res.headers,
-				content_type = client_res.headers['content-type'],
-				is_html      = content_type && !!~content_type.indexOf('html'),
-				is_text      = content_type && !!~content_type.indexOf('text');
-			
-			for(var h in res_headers) {
-				res.setHeader(h,res_headers[h]);
-			}
-			
-			// keep a property with headers to access them later in the pipeline p.e. for removal/updating location header etc.
-			var
-				tmp,
-				headers_property = (tmp=options) && (tmp=tmp.response) && (tmp=tmp.property) ? tmp.headers : null,
-				body_property    = (tmp=options) && (tmp=tmp.response) && (tmp=tmp.property) ? tmp.body : null;
-			
-			if( headers_property ){
-				res[headers_property]=client_res.headers;
-			}
-			
-			if( is_html || is_text ){
-				body = body.toString('utf8');
-				log.debug && log.debug(body);
-			}
-			
-			// images, css etc. are forwared as is
-			if( !is_html || !body_property ){
-				res.end(body,is_text?'utf8':void 0); 
-				return;
-			}
-			
-			res[body_property]=body;
-			
-			if(data && client_res ){
-				var
-					app    = options.client.data || options.client.backend || 'proxy',
-					path   = u,
-					result = {};
-					
-				if(client_res.statusCode ){
-					result.statusCode = client_res.statusCode;
-				}
-				if( content_type ) result.type = content_type;
-				
-				if( typeof body != typeof(void 0) ){
-					if ( body instanceof Buffer ) body = body.toString('utf-8');
-					result.body = body;
-					if(result.body.length > 200 ){
-						result.body.toJSON = function(){ return this.substring(200)+'...(first 200 chars, see '+__filename+' to change display)'; };
-					}
-				}
-				result.headers=client_res.headers;
-				if( ( options.param || options.header ) && client.config && client.config.url ){
-					result.url = client.config.url; // http[s]://server[:port]/x
-				}
-				
-				data[app] = data[app] || {};
-				data[app][path] = result;
-			}
+			extend(proxy_res, pluck(client_res, ['statusCode', 'headers', 'body']));
 			
 			next && next();
 		}));
@@ -133,49 +75,74 @@ module.exports = extend(M=function(options){
 			data    : void 0,  // alternative data: 'name'  // the backend is used from a special data client from the data directory
 			backend : void 0,  // or  backend : 'name'  // backend is used from a backend client...
 			param   : void 0,  // or in DEV/TEST ENVS only param ,'proxy',   use parameter to define proxy prefix "proxy=https://www.site.de/x" overrides header note this is dangereous as it creates an open arbitrary http proxy!
-			header  : { host: 'host' , ssl: 'ISSSL' /*false, or boolean if no header*/ }, // or find host:port in header in header (http proxy behaviour)
-			strict  : false // if false on 404 (not found) continue to next middleware, if true then send 404 as response
+			header  : { host: 'host' , ssl: 'x-isssl' /*false, or boolean if no header*/ }, // or find host:port in header in header (http proxy behaviour)
+			strict  : false    // if false on 404 (not found) continue to next middleware, if true then send 404 as response
 		},
-		request:{
-			headers: 'proxy_request_headers' // where to find headers to forward
-		},
-		response: {
-			data: true, // note that the result is also stored at responnse.data.'proxy' and 'host:port'.{statusCode,body,err,type,headers}
-			body:'body', // property where to store the body content
-			headers: 'proxy_response_headers' // where to store the returned response headers
-		}
+		request : 'proxy',
+		response: 'proxy'
 	},
 	
 	// load dynamically a client for the proxy target (pm, mce, www.xyz.de), as defined via the options
 	// from the data / backend directory or via parameter or headers
-	client:function(options,req,errors){
-		
-		var log = req.log ? req.log(__filename) : {};
-		
+	
+	client:function(options, req, res, errors){
 		var
-			request,
+			log = req.log ? req.log(__filename) : {},
 			module_path,
 			generic_url_prefix,
-			err=null;
+			backend_origin,
+			err = null;
 		
-		if(options.data                    ) module_path = '../data/'    + options.data    + '/client';
-		if(!module_path && options.backend ) module_path = '../backend/' + options.backend + '/client';
+		if(options.data                    ) module_path = options.data    + '/client';
+		if(!module_path && options.backend ) module_path = options.backend + '/client';
 		
 		if(!module_path && ( options.param || options.header )) {
-			generic_url_prefix = req.param(options.param);
-			
-			if(!generic_url_prefix){
-				var is_ssl = typeof options.header.ssl == 'string' ? bool(req.headers[options.header.ssl]) : !! options.header.ssl;
-				generic_url_prefix = ( is_ssl ? 'https://' : 'http://') + req.headers[options.header.host];
+			if(options.param){
+				generic_url_prefix = req.param(options.param);
+				// accept only the first given parameter
+				if(Array.isArray(generic_url_prefix)) generic_url_prefix =(0 in generic_url_prefix ? generic_url_prefix[0] : null);
+				
+				// remove the proxy parameter from the url
+				if(req.query){
+					delete req.query[options.param];
+				}
+				if(req.url){
+					req.url = req.url
+						.replace(new RegExp(options.param+'=[^&]*(&|$)','g'),'')
+						.replace(/\?$/,'');
+				}
+				if(generic_url_prefix) backend_origin = 'PARAMETER '+options.param+' '; // for logging
 			}
 			
-			if(generic_url_prefix) module_path = '../util/request';
+			if(!generic_url_prefix) {
+				var is_ssl = typeof options.header.ssl === 'string' ? bool(req.headers[options.header.ssl]) : !! options.header.ssl;
+				// get first header that is set to define the proxy target as contained in proxy_options.client.header.host
+				// but prefer those *not* equal to 'host'
+				var
+					tmp,
+					headers = Array.isArray(tmp=( (tmp=options.header) && (tmp=tmp.host) ? tmp : 'host' )) ? tmp : [tmp];
+				for(var i=0,l=headers.length,h,host;i<l && (!generic_url_prefix || h==='host');i++){
+					h = headers[i];
+					host = req.headers[h];
+					if( host ) generic_url_prefix = ( is_ssl ? 'https://' : 'http://') + host;
+					if( h !=='host' && res && res.addHeader) res.addHeader('Vary', h );
+				}
+				if(generic_url_prefix) backend_origin = 'HOST HEADER ';  // for logging
+			}
+			
+			if(generic_url_prefix){
+				// never use query parts in a proxy base url
+				generic_url_prefix = generic_url_prefix.replace(/\?.*$/,'');
+				
+				module_path = 'x-requests';
+			}
 		}
 		
-		if( module_path) try{
+		var request; // module
+		if( module_path) try {
 			request = require(module_path);
 		} catch (e) {
-			err=e;
+			err = e;
 		}
 		
 		if( err || !request || typeof( request ) !== 'function' ){
@@ -193,18 +160,19 @@ module.exports = extend(M=function(options){
 		if(generic_url_prefix){
 			var generic_config = {
 				url     : generic_url_prefix,
-				name    : 'PROXY '+generic_url_prefix,
-				request : {
-					timeout    : 60000, // we need this timeout that long since the back end is so awfully slow
+				name    : 'PROXY ' + ( backend_origin || '' ) + generic_url_prefix,
+				request : merge({
+					timeout    : 3000,
 					maxSockets : 128,
+					followRedirect: false,
 					headers    : {
 					}
-				}
+				},options.request||{})
 			};
+			debugger;
 			request = request(generic_config);
-			request.config=generic_config;
+			request.config = generic_config;
 		}
-		
 		return request;
 	}
 });

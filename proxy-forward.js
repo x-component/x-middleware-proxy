@@ -130,7 +130,7 @@ module.exports = {
 						// ensure multiple single set cookie headers are used,
 						// and the value is not serialized in a single set-cookie header
 						for( var i=0, l=value.length; i<l; i++ ){
-							res.setHeader( name, value[i] );
+							res.append( name, value[i] );
 						}
 					
 					} else {

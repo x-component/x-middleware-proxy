@@ -7,6 +7,7 @@ module.exports =extend(require('./proxy'),{
 	status     : require('./proxy-status')
 	location   : require('./location'),
 	relativize : require('./relativize2'),
+	redirect   : require('./proxy-redirect'),
 	map : {
 		header : require('./map-header'),
 		cookie : require('./map-cookie')

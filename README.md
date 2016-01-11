@@ -8,6 +8,7 @@
 - [./map-header.js](#map-headerjs) 
 - [./map.js](#mapjs) 
 - [./proxy-forward.js](#proxy-forwardjs) 
+- [./proxy-redirect.js](#proxy-redirectjs) 
 - [./proxy-status.js](#proxy-statusjs) 
 - [./proxy.js](#proxyjs) 
 - [./relativize.js](#relativizejs) 
@@ -78,6 +79,15 @@
   Forwards the existing inner response, if it is not of content-type html or text.
    Otherwise statusCode and body of inner response will be stored in the outer response for further transformation.
 
+# ./proxy-redirect.js
+
+  - [redirect](#redirect)
+
+## redirect
+
+  wrap the original redirect to accept relative urls
+  and automatically produce absolute urls with http server port / complete path
+
 # ./proxy-status.js
 
 
@@ -89,7 +99,8 @@
 
 ## callback
 
-  read content from CMS
+  Returns an function which fires a inner request and puts the data (statusCode','headers','body)
+  from corresponding response to the outer response.
 
 # ./relativize.js
 
